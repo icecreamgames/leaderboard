@@ -6,7 +6,8 @@ export async function handler(event, context) {
         const { player_name } = body;
 
         const client = new Client({
-            connectionString: process.env.NETLIFY_DATABASE_URL
+            connectionString: process.env.NETLIFY_DATABASE_URL,
+            ssl: { rejectUnauthorized: false }
         });
 
         await client.connect();
