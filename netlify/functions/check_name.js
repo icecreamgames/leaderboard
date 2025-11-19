@@ -1,44 +1,29 @@
-export default async (req, context) => {
-    try {
-        let body = await req.text();
-        let data = JSON.parse(body);
+export default async (req) => {
+    const body = JSON.parse(req.body);
+    const name = body.player_name;
 
-        let player_name = data.player_name;
+    const url = process.env.NETLIFY_DATABASE_URL;
+    const key = process.env.NEON_API_KEY;
 
-        if (!player_name) {
-            return new Response(JSON.stringify({ error: "Missing name" }), {
-                status: 400,
-                headers: { "Content-Type": "application/json" }
-            });
-        }
+    const sql = `
+        SELECT COUNT(*) AS taken
+        FROM players
+        WHERE name = '${name}';
+    `;
 
-        const sql = `
-            SELECT COUNT(*) AS count
-            FROM leaderboard
-            WHERE player_name = '${player_name}';
-        `;
+    const response = await fetch(url, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + key
+        },
+        body: JSON.stringify({ sql })
+    });
 
-        let response = await fetch("https://YOUR-NEON-URL.neon.tech/sql", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + process.env.NEON_API_KEY
-            },
-            body: JSON.stringify({ sql })
-        });
+    const data = await response.json();
 
-        let res_json = await response.json();
-        let exists = parseInt(res_json[0].count) > 0;
-
-        return new Response(JSON.stringify({ available: !exists }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" }
-        });
-
-    } catch (e) {
-        return new Response(JSON.stringify({ error: e.toString() }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" }
-        });
-    }
+    return {
+        statusCode: 200,
+        body: JSON.stringify(data[0])
+    };
 };
