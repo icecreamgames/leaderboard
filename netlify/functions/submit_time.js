@@ -1,9 +1,27 @@
 export default async (req) => {
-    const body = JSON.parse(req.body);
+    let body = {};
 
-    const name = body.player_name;
-    const level = body.level;
-    const time = body.time_seconds;
+    try {
+        if (req.body) {
+            body = JSON.parse(req.body);
+        }
+    } catch (e) {
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ error: "Invalid JSON" })
+        };
+    }
+
+    const name = body.player_name || "";
+    const level = body.level || 0;
+    const time = body.time_seconds || 0;
+
+    if (name === "" || level === 0) {
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ error: "Missing fields", body })
+        };
+    }
 
     const url = process.env.NETLIFY_DATABASE_URL;
     const key = process.env.NEON_API_KEY;
