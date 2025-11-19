@@ -1,39 +1,37 @@
-import { Client } from "pg";
+export default async (req) => {
+    const body = JSON.parse(req.body);
 
-export async function handler(event, context) {
-    try {
-        const body = JSON.parse(event.body);
+    const name = body.player_name;
+    const level = body.level;
+    const time = body.time_seconds;
 
-        const { player_name, level, time_seconds } = body;
+    const url = process.env.NETLIFY_DATABASE_URL;
+    const key = process.env.NEON_API_KEY;
 
-        const client = new Client({
-            connectionString: process.env.NETLIFY_DATABASE_URL,
-            ssl: { rejectUnauthorized: false }
-        });
+    const sql = `
+        INSERT INTO leaderboard (player_name, level, time_seconds)
+        VALUES ('${name}', ${level}, ${time})
+        RETURNING (
+            SELECT COUNT(*)
+            FROM leaderboard
+            WHERE level = ${level}
+              AND time_seconds < ${time}
+        ) + 1 AS rank;
+    `;
 
-        await client.connect();
+    const response = await fetch(url, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + key
+        },
+        body: JSON.stringify({ sql })
+    });
 
-        await client.query(
-            "INSERT INTO leaderboard (player_name, level, time_seconds) VALUES ($1, $2, $3)",
-            [player_name, level, time_seconds]
-        );
+    const result = await response.json();
 
-        const r = await client.query(
-            "SELECT COUNT(*) + 1 AS rank FROM leaderboard WHERE level = $1 AND time_seconds < $2",
-            [level, time_seconds]
-        );
-
-        await client.end();
-
-        return {
-            statusCode: 200,
-            body: JSON.stringify({ rank: r.rows[0].rank })
-        };
-
-    } catch (err) {
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: err.message })
-        };
-    }
-}
+    return {
+        statusCode: 200,
+        body: JSON.stringify(result[0])
+    };
+};
