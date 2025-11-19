@@ -1,35 +1,44 @@
-import { Client } from "pg";
-
-export async function handler(event, context) {
+export default async (req, context) => {
     try {
-        const body = JSON.parse(event.body);
-        const { player_name } = body;
+        let body = await req.text();
+        let data = JSON.parse(body);
 
-        const client = new Client({
-            connectionString: process.env.NETLIFY_DATABASE_URL,
-            ssl: { rejectUnauthorized: false }
+        let player_name = data.player_name;
+
+        if (!player_name) {
+            return new Response(JSON.stringify({ error: "Missing name" }), {
+                status: 400,
+                headers: { "Content-Type": "application/json" }
+            });
+        }
+
+        const sql = `
+            SELECT COUNT(*) AS count
+            FROM leaderboard
+            WHERE player_name = '${player_name}';
+        `;
+
+        let response = await fetch("https://YOUR-NEON-URL.neon.tech/sql", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + process.env.NEON_API_KEY
+            },
+            body: JSON.stringify({ sql })
         });
 
-        await client.connect();
+        let res_json = await response.json();
+        let exists = parseInt(res_json[0].count) > 0;
 
-        const result = await client.query(
-            "SELECT COUNT(*) AS n FROM leaderboard WHERE player_name = $1",
-            [player_name]
-        );
+        return new Response(JSON.stringify({ available: !exists }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+        });
 
-        await client.end();
-
-        return {
-            statusCode: 200,
-            body: JSON.stringify({
-                exists: Number(result.rows[0].n) > 0
-            })
-        };
-
-    } catch (err) {
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: err.message })
-        };
+    } catch (e) {
+        return new Response(JSON.stringify({ error: e.toString() }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" }
+        });
     }
-}
+};
