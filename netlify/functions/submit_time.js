@@ -1,61 +1,68 @@
-export default async (req) => {
+export default async (request, context) => {
     try {
-        // Read JSON body correctly from Netlify Request
-        let body = {};
-        try {
-            body = await req.json();
-        } catch (e) {
-            return new Response(
-                JSON.stringify({ error: true, message: "Invalid or missing JSON body" }),
-                { status: 400, headers: { "Content-Type": "application/json" } }
-            );
+        const body = await request.json();
+
+        const player_name = body.player_name;
+        const level = body.level;
+        const time_seconds = body.time_seconds;
+
+        if (!player_name || !level || !time_seconds) {
+            return new Response(JSON.stringify({
+                error: "Missing fields",
+                received: body
+            }), { status: 400 });
         }
 
-        const name  = body.player_name || "";
-        const level = body.level || 0;
-        const time  = body.time_seconds || 0;
+        const API_URL = "https://ep-ancient-base-aeg8qrqg.apirest.c-2.us-east-2.aws.neon.tech/neondb/rest/v1";
+        const API_KEY = process.env.NEON_API_KEY;  // YOU MUST SET THIS IN NETLIFY
 
-        if (name === "" || level === 0) {
-            return new Response(
-                JSON.stringify({ error: true, message: "Missing fields", received: body }),
-                { status: 400, headers: { "Content-Type": "application/json" } }
-            );
-        }
-
-        const url = process.env.NETLIFY_DATABASE_URL;
-        const key = process.env.NEON_API_KEY;
-
-        const sql = `
-            INSERT INTO leaderboard (player_name, level, time_seconds)
-            VALUES ('${name}', ${level}, ${time})
-            RETURNING (
-                SELECT COUNT(*)
-                FROM leaderboard
-                WHERE level = ${level}
-                  AND time_seconds < ${time}
-            ) + 1 AS rank;
-        `;
-
-        const response = await fetch(url, {
+        // 1. Insert score
+        const insertRes = await fetch(`${API_URL}/leaderboard`, {
             method: "POST",
             headers: {
+                "apikey": API_KEY,
+                "Authorization": `Bearer ${API_KEY}`,
                 "Content-Type": "application/json",
-                "Authorization": "Bearer " + key
+                "Prefer": "return=minimal"
             },
-            body: JSON.stringify({ sql })
+            body: JSON.stringify({
+                player_name,
+                level,
+                time_seconds
+            })
         });
 
-        const result = await response.json();
+        if (!insertRes.ok) {
+            const errText = await insertRes.text();
+            return new Response(JSON.stringify({
+                error: true,
+                message: "Insert error",
+                details: errText
+            }), { status: 400 });
+        }
 
-        return new Response(
-            JSON.stringify({ ok: true, neon: result }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
+        // 2. Fetch ranking
+        const rankRes = await fetch(
+            `${API_URL}/rpc/get_rank?player_name=${player_name}&level=${level}`,
+            {
+                headers: {
+                    "apikey": API_KEY,
+                    "Authorization": `Bearer ${API_KEY}`
+                }
+            }
         );
-    }
-    catch (err) {
-        return new Response(
-            JSON.stringify({ error: true, message: err.message }),
-            { status: 500, headers: { "Content-Type": "application/json" } }
-        );
+
+        const rankJson = await rankRes.json();
+
+        return new Response(JSON.stringify({
+            success: true,
+            rank: rankJson
+        }), { status: 200 });
+
+    } catch (e) {
+        return new Response(JSON.stringify({
+            error: true,
+            message: e.message
+        }), { status: 500 });
     }
 };
