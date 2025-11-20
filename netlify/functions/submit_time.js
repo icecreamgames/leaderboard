@@ -5,42 +5,70 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-exports.handler = async (event, context) => {
+exports.handler = async (event) => {
     try {
         if (event.httpMethod !== "POST") {
-            return { statusCode: 405, body: "Method not allowed" };
+            return {
+                statusCode: 405,
+                body: JSON.stringify({ error: "Method not allowed" })
+            };
         }
 
-        const body = JSON.parse(event.body);
+        // event.body might be null → check first
+        if (!event.body || event.body.trim() === "") {
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error: "Empty request body" })
+            };
+        }
 
-        const player_name = body.player_name;
-        const level = body.level;
-        const time_seconds = body.time_seconds;
+        let body;
+        try {
+            body = JSON.parse(event.body);
+        } catch (err) {
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error: "Invalid JSON", raw: event.body })
+            };
+        }
+
+        const player_name   = body.player_name;
+        const level         = body.level;
+        const time_seconds  = body.time_seconds;
 
         if (!player_name || !level || !time_seconds) {
-            return { statusCode: 400, body: JSON.stringify({ error: "Missing fields" }) };
+            return {
+                statusCode: 400,
+                body: JSON.stringify({ error: "Missing fields", received: body })
+            };
         }
 
         const client = await pool.connect();
 
-        const insert = await client.query(
-            "INSERT INTO scores (player_name, level, time_seconds) VALUES ($1, $2, $3) RETURNING id",
+        await client.query(
+            "INSERT INTO scores (player_name, level, time_seconds) VALUES ($1, $2, $3)",
             [player_name, level, time_seconds]
         );
 
-        const rankResult = await client.query(`
-            SELECT COUNT(*) AS better
-            FROM scores
-            WHERE level = $1 AND time_seconds < $2
-        `, [level, time_seconds]);
+        const rankQuery = await client.query(
+            "SELECT COUNT(*) AS better FROM scores WHERE level = $1 AND time_seconds < $2",
+            [level, time_seconds]
+        );
 
         client.release();
 
-        const rank = Number(rankResult.rows[0].better) + 1;
+        const rank = Number(rankQuery.rows[0].better) + 1;
 
-        return { statusCode: 200, body: JSON.stringify({ status: "ok", rank }) };
+        return {
+            statusCode: 200,
+            body: JSON.stringify({ rank: rank })
+        };
 
     } catch (err) {
-        return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: err.message })
+        };
     }
 };
+
