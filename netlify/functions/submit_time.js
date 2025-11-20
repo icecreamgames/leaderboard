@@ -1,8 +1,15 @@
 export default async (req) => {
     try {
-        // make sure body exists
+        // Read JSON body correctly from Netlify Request
         let body = {};
-        if (req.body) body = JSON.parse(req.body);
+        try {
+            body = await req.json();
+        } catch (e) {
+            return new Response(
+                JSON.stringify({ error: true, message: "Invalid or missing JSON body" }),
+                { status: 400, headers: { "Content-Type": "application/json" } }
+            );
+        }
 
         const name  = body.player_name || "";
         const level = body.level || 0;
@@ -10,15 +17,14 @@ export default async (req) => {
 
         if (name === "" || level === 0) {
             return new Response(
-                JSON.stringify({ error: "Missing fields", received: body }),
-                { status: 400, headers: { "Content-Type": "application/json" }}
+                JSON.stringify({ error: true, message: "Missing fields", received: body }),
+                { status: 400, headers: { "Content-Type": "application/json" } }
             );
         }
 
         const url = process.env.NETLIFY_DATABASE_URL;
         const key = process.env.NEON_API_KEY;
 
-        // SQL query
         const sql = `
             INSERT INTO leaderboard (player_name, level, time_seconds)
             VALUES ('${name}', ${level}, ${time})
@@ -30,7 +36,6 @@ export default async (req) => {
             ) + 1 AS rank;
         `;
 
-        // send SQL to Neon
         const response = await fetch(url, {
             method: "POST",
             headers: {
@@ -40,20 +45,17 @@ export default async (req) => {
             body: JSON.stringify({ sql })
         });
 
-        // Neon database response
-        let result = await response.json();
+        const result = await response.json();
 
         return new Response(
             JSON.stringify({ ok: true, neon: result }),
-            { status: 200, headers: { "Content-Type": "application/json" }}
+            { status: 200, headers: { "Content-Type": "application/json" } }
         );
     }
-
     catch (err) {
-        // THIS ALWAYS RETURNS JSON even if the function crashes
         return new Response(
             JSON.stringify({ error: true, message: err.message }),
-            { status: 500, headers: { "Content-Type": "application/json" }}
+            { status: 500, headers: { "Content-Type": "application/json" } }
         );
     }
 };
