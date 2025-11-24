@@ -1,32 +1,39 @@
-const { Client } = require("pg");
+const { Pool } = require("pg");
 
-exports.handler = async (event, context) => {
-    const client = new Client({
-        connectionString: process.env.NETLIFY_DATABASE_URL,
-        ssl: { rejectUnauthorized: false }
-    });
+const pool = new Pool({
+    connectionString: process.env.NETLIFY_DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+});
 
+exports.handler = async (event) => {
     try {
-        await client.connect();
+        if (event.httpMethod !== "GET") {
+            return {
+                statusCode: 405,
+                body: JSON.stringify({ error: "Method not allowed" })
+            };
+        }
 
-        // Return ALL levels
+        const client = await pool.connect();
+
+        // ✨ Return ALL scores — no level filter
         const result = await client.query(
-            "SELECT player_name, level, time_seconds FROM leaderboard ORDER BY time_seconds ASC"
+            "SELECT player_name, level, time_seconds FROM scores ORDER BY time_seconds ASC"
         );
 
-        await client.end();
+        client.release();
 
+        // RESULT = array of objects
         return {
             statusCode: 200,
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(result.rows)
         };
-    }
-    catch (err) {
-        console.error("DB ERROR:", err);
+
+    } catch (err) {
         return {
             statusCode: 500,
-            body: JSON.stringify({ error: "Database failure" })
+            body: JSON.stringify({ error: err.message })
         };
     }
 };
