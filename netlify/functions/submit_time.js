@@ -14,6 +14,7 @@ exports.handler = async (event) => {
             };
         }
 
+        // Ensure body exists
         if (!event.body || event.body.trim() === "") {
             return {
                 statusCode: 400,
@@ -31,26 +32,35 @@ exports.handler = async (event) => {
             };
         }
 
-        const player_name   = body.player_name;
-        const level         = Number(body.level);
-        const time_seconds  = Number(body.time_seconds);
+        const player_name = body.player_name;
+        const level       = Number(body.level);
+        let time_seconds  = parseFloat(body.time_seconds);
 
+        // Validate input
         if (!player_name || isNaN(level) || isNaN(time_seconds)) {
             return {
                 statusCode: 400,
-                body: JSON.stringify({ error: "Missing or invalid fields", received: body })
+                body: JSON.stringify({
+                    error: "Missing or invalid fields",
+                    received: body
+                })
             };
         }
 
+        // Force float to avoid text inserts
+        time_seconds = Number(time_seconds);
+
         const client = await pool.connect();
 
+        // Insert properly typed data
         await client.query(
-            "INSERT INTO leaderboard (player_name, level, time_seconds) VALUES ($1, $2, $3)",
+            "INSERT INTO scores (player_name, level, time_seconds) VALUES ($1, $2, $3)",
             [player_name, level, time_seconds]
         );
 
+        // Rank calculation
         const rankQuery = await client.query(
-            "SELECT COUNT(*) AS better FROM leaderboard WHERE level = $1 AND time_seconds < $2",
+            "SELECT COUNT(*) AS better FROM scores WHERE level = $1 AND time_seconds < $2",
             [level, time_seconds]
         );
 
@@ -70,5 +80,4 @@ exports.handler = async (event) => {
         };
     }
 };
-
 
