@@ -7,18 +7,14 @@ const pool = new Pool({
 
 exports.handler = async (event) => {
 
-  // -------------------------
-  // CORS HEADERS (REQUIRED)
-  // -------------------------
+  // 🔑 REQUIRED FOR HTML5
   const headers = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Allow-Methods": "GET, OPTIONS"
   };
 
-  // -------------------------
-  // PREFLIGHT (HTML5 BROWSERS)
-  // -------------------------
+  // 🔑 REQUIRED PREFLIGHT HANDLER
   if (event.httpMethod === "OPTIONS") {
     return {
       statusCode: 200,
@@ -27,9 +23,6 @@ exports.handler = async (event) => {
     };
   }
 
-  // -------------------------
-  // ONLY ALLOW GET
-  // -------------------------
   if (event.httpMethod !== "GET") {
     return {
       statusCode: 405,
@@ -41,14 +34,9 @@ exports.handler = async (event) => {
   try {
     const client = await pool.connect();
 
-    // -------------------------
-    // RETURN *ALL* SCORES
-    // -------------------------
+    // RETURN ALL SCORES — GameMaker sorts
     const result = await client.query(`
-      SELECT 
-        player_name,
-        level,
-        time_seconds
+      SELECT player_name, level, time_seconds
       FROM scores
     `);
 
@@ -56,7 +44,7 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 200,
-      headers,
+      headers, // 🔑 DO NOT REMOVE
       body: JSON.stringify(result.rows)
     };
 
