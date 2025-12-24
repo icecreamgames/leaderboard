@@ -1,83 +1,77 @@
 const { Pool } = require("pg");
 
 const pool = new Pool({
-    connectionString: process.env.NETLIFY_DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+  connectionString: process.env.NETLIFY_DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
 });
 
 exports.handler = async (event) => {
-    try {
-        if (event.httpMethod !== "POST") {
-            return {
-                statusCode: 405,
-                body: JSON.stringify({ error: "Method not allowed" })
-            };
-        }
 
-        // Ensure body exists
-        if (!event.body || event.body.trim() === "") {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({ error: "Empty request body" })
-            };
-        }
+  // ---------- CORS ----------
+  const headers = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
+  };
 
-        let body;
-        try {
-            body = JSON.parse(event.body);
-        } catch (err) {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({ error: "Invalid JSON", raw: event.body })
-            };
-        }
+  // ---------- OPTIONS PREFLIGHT ----------
+  if (event.httpMethod === "OPTIONS") {
+    return {
+      statusCode: 200,
+      headers,
+      body: ""
+    };
+  }
 
-        const player_name = body.player_name;
-        const level       = Number(body.level);
-        let time_seconds  = parseFloat(body.time_seconds);
+  if (event.httpMethod !== "POST") {
+    return {
+      statusCode: 405,
+      headers,
+      body: JSON.stringify({ error: "Method not allowed" })
+    };
+  }
 
-        // Validate input
-        if (!player_name || isNaN(level) || isNaN(time_seconds)) {
-            return {
-                statusCode: 400,
-                body: JSON.stringify({
-                    error: "Missing or invalid fields",
-                    received: body
-                })
-            };
-        }
+  let body;
+  try {
+    body = JSON.parse(event.body);
+  } catch (e) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ error: "Invalid JSON" })
+    };
+  }
 
-        // Force float to avoid text inserts
-        time_seconds = Number(time_seconds);
+  const { player_name, level, time_seconds } = body;
 
-        const client = await pool.connect();
+  if (!player_name || !level || !time_seconds) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ error: "Missing fields" })
+    };
+  }
 
-        // Insert properly typed data
-        await client.query(
-            "INSERT INTO scores (player_name, level, time_seconds) VALUES ($1, $2, $3)",
-            [player_name, level, time_seconds]
-        );
+  const client = await pool.connect();
 
-        // Rank calculation
-        const rankQuery = await client.query(
-            "SELECT COUNT(*) AS better FROM scores WHERE level = $1 AND time_seconds < $2",
-            [level, time_seconds]
-        );
+  await client.query(
+    "INSERT INTO scores (player_name, level, time_seconds) VALUES ($1,$2,$3)",
+    [player_name, level, time_seconds]
+  );
 
-        client.release();
+  const rankResult = await client.query(
+    "SELECT COUNT(*) FROM scores WHERE level=$1 AND time_seconds < $2",
+    [level, time_seconds]
+  );
 
-        const rank = Number(rankQuery.rows[0].better) + 1;
+  client.release();
 
-        return {
-            statusCode: 200,
-            body: JSON.stringify({ rank: rank })
-        };
+  const rank = Number(rankResult.rows[0].count) + 1;
 
-    } catch (err) {
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: err.message })
-        };
-    }
+  return {
+    statusCode: 200,
+    headers,
+    body: JSON.stringify({ rank })
+  };
 };
 
